@@ -45,6 +45,8 @@ function M.dispatch(args)
 end
 
 function M.register()
+	pcall(vim.api.nvim_del_user_command, "UBuildTool")
+
 	vim.api.nvim_create_user_command("UBuildTool", M.dispatch, {
 		nargs = "*",
 		complete = function(arglead)

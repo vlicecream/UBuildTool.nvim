@@ -2,10 +2,20 @@ local M = {}
 
 local initialized = false
 
+function M.reset()
+	pcall(function()
+		local unreal = require("ubuildtool.unreal")
+		if unreal.is_build_running and unreal.is_build_running() then
+			unreal.cancel_build()
+		end
+	end)
+	pcall(vim.api.nvim_del_user_command, "UBuildTool")
+	initialized = false
+end
+
 function M.setup(opts)
 	if initialized then
-		require("ubuildtool.config").setup(opts)
-		return
+		M.reset()
 	end
 
 	initialized = true

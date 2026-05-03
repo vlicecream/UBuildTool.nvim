@@ -481,6 +481,10 @@ function M.build_async(args, callback)
 	start_build(args, callback)
 end
 
+function M.is_build_running()
+	return build_job ~= nil
+end
+
 function M.cancel_build()
 	if not build_job then
 		return vim.notify("No UBuildTool build is running", vim.log.levels.INFO)
