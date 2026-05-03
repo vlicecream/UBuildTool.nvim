@@ -9,6 +9,7 @@ Standalone Unreal Engine build tooling for Neovim.
 - opening the current project in Unreal Editor
 - preparing `compile_commands.json` for `clangd`
 - build log coloring and quickfix population
+- optional shared bottom output tabs when `UCore.nvim` is present
 
 ## Install
 
@@ -64,3 +65,4 @@ require("ubuildtool").setup({
   - Epic Launcher installs
   - source-build registry entries on Windows
 - `clangd-db` stages `compile_commands.json` into the plugin cache under `stdpath("cache")/ubuildtool/`
+- when `UCore.nvim` is loaded, build logs and Unreal Editor launch messages are sent into the shared bottom output workspace instead of opening a separate build split

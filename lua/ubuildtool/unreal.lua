@@ -5,6 +5,7 @@ local M = {}
 
 local build_job = nil
 local build_buf = nil
+local build_output = nil
 local build_cancelled = false
 local build_pid = nil
 
@@ -14,6 +15,15 @@ local build_warning_count = 0
 
 local build_ns = vim.api.nvim_create_namespace("ubuildtool_build_log")
 local highlights_setup = false
+local on_build_line
+
+local function shared_output_panel()
+	local panel = rawget(_G, "__ucore_output_panel_api")
+	if type(panel) == "table" and type(panel.open_tab) == "function" then
+		return panel
+	end
+	return nil
+end
 
 local function setup_highlights()
 	if highlights_setup then
@@ -24,6 +34,51 @@ local function setup_highlights()
 	vim.api.nvim_set_hl(0, "UBuildToolBuildWarning", { fg = "#FFCC66" })
 	vim.api.nvim_set_hl(0, "UBuildToolBuildSuccess", { fg = "#89D185", bold = true })
 	vim.api.nvim_set_hl(0, "UBuildToolBuildCommand", { fg = "#4FC1FF" })
+end
+
+local function build_line_group(text)
+	text = tostring(text or "")
+	local lower = text:lower()
+
+	if text:match("^Project:") or text:match("^Engine:") or text:match("^Command:") then
+		return "UCoreOutputCommand"
+	end
+	if text:match("error%s+C%d+:")
+		or lower:find("fatal error", 1, true)
+		or text:match("fatal error%s+LNK%d+")
+		or text:match("%f[%a]LNK%d+%f[%A]")
+		or lower:find("ubt error", 1, true)
+		or lower:find("error:", 1, true)
+	then
+		return "UCoreOutputError"
+	end
+	if text:match("warning%s+C%d+:")
+		or lower:find(": warning ", 1, true)
+		or lower:find("warning:", 1, true)
+	then
+		return "UCoreOutputWarning"
+	end
+	if lower:find("succeeded", 1, true) or lower:find("finished with exit code 0", 1, true) then
+		return "UCoreOutputSuccess"
+	end
+
+	return nil
+end
+
+local function local_build_group(group)
+	if group == "UCoreOutputCommand" then
+		return "UBuildToolBuildCommand"
+	end
+	if group == "UCoreOutputError" then
+		return "UBuildToolBuildError"
+	end
+	if group == "UCoreOutputWarning" then
+		return "UBuildToolBuildWarning"
+	end
+	if group == "UCoreOutputSuccess" then
+		return "UBuildToolBuildSuccess"
+	end
+	return group
 end
 
 local function normalize(path)
@@ -262,26 +317,7 @@ local function color_build_line(buf, line_num, text)
 		return
 	end
 
-	local lower = text:lower()
-	local group
-	if text:match("^Project:") or text:match("^Engine:") or text:match("^Command:") then
-		group = "UBuildToolBuildCommand"
-	elseif text:match("error%s+C%d+:")
-		or lower:find("fatal error", 1, true)
-		or text:match("fatal error%s+LNK%d+")
-		or text:match("%f[%a]LNK%d+%f[%A]")
-		or lower:find("ubt error", 1, true)
-		or lower:find("error:", 1, true)
-	then
-		group = "UBuildToolBuildError"
-	elseif text:match("warning%s+C%d+:")
-		or lower:find(": warning ", 1, true)
-		or lower:find("warning:", 1, true)
-	then
-		group = "UBuildToolBuildWarning"
-	elseif lower:find("succeeded", 1, true) or lower:find("finished with exit code 0", 1, true) then
-		group = "UBuildToolBuildSuccess"
-	end
+	local group = local_build_group(build_line_group(text))
 
 	if group then
 		local end_col = math.max(0, vim.fn.strchars(text))
@@ -291,6 +327,79 @@ local function color_build_line(buf, line_num, text)
 			end_col = end_col,
 		})
 	end
+end
+
+local function split_lines(data)
+	if not data or data == "" then
+		return {}
+	end
+
+	data = tostring(data):gsub("\r\n", "\n"):gsub("\r", "\n")
+	local lines = vim.split(data, "\n", { plain = true })
+	if lines[#lines] == "" then
+		table.remove(lines, #lines)
+	end
+	return lines
+end
+
+local function build_output_sink(title)
+	local panel = shared_output_panel()
+	if panel then
+		return {
+			kind = "panel",
+			panel = panel,
+			key = panel.open_tab({
+				key = "ubuildtool:" .. tostring(vim.loop.hrtime()),
+				title = title,
+				kind = "build",
+				focus = true,
+			}),
+		}
+	end
+
+	return {
+		kind = "buffer",
+		buf = create_log_buffer(title),
+	}
+end
+
+local function append_build_chunk(sink, project_root, data, no_parse)
+	if not data or data == "" then
+		return
+	end
+
+	if sink.kind == "panel" then
+		local lines = split_lines(data)
+		if vim.tbl_isempty(lines) then
+			return
+		end
+
+		local groups = {}
+		for i, line_text in ipairs(lines) do
+			if not no_parse then
+				local item = parse_diagnostic_line(line_text, project_root)
+				if item then
+					table.insert(build_diagnostics, item)
+					if item.type == "E" then
+						build_error_count = build_error_count + 1
+					elseif item.type == "W" then
+						build_warning_count = build_warning_count + 1
+					end
+				end
+			end
+			groups[i] = build_line_group(line_text)
+		end
+
+		sink.panel.append(sink.key, lines, {
+			focus = false,
+			line_groups = groups,
+		})
+		return
+	end
+
+	append_lines(sink.buf, data, function(b, ln, t)
+		on_build_line(project_root, b, ln, t, no_parse)
+	end)
 end
 
 local function fill_quickfix()
@@ -328,7 +437,7 @@ local function build_summary(ok, exit_code)
 	return table.concat(parts, ", ")
 end
 
-local function on_build_line(project_root, buf, line_num, text, no_parse)
+on_build_line = function(project_root, buf, line_num, text, no_parse)
 	if not no_parse then
 		local item = parse_diagnostic_line(text, project_root)
 		if item then
@@ -379,37 +488,31 @@ local function start_build(args, callback)
 	setup_highlights()
 
 	local title = string.format("UBuildTool build: %s %s %s", opts.target, opts.platform, opts.configuration)
-	local buf = create_log_buffer(title)
-	build_buf = buf
-
-	local function header_on_line(b, ln, t)
-		color_build_line(b, ln, t)
+	local sink = build_output_sink(title)
+	build_output = sink
+	if sink.kind == "buffer" then
+		build_buf = sink.buf
 	end
 
-	append_lines(buf, "Project: " .. ctx.uproject, header_on_line)
-	append_lines(buf, "Engine:  " .. ctx.engine_root, header_on_line)
-	append_lines(buf, "Command: " .. table.concat(cmd, " "), header_on_line)
-	append_lines(buf, "")
+	append_build_chunk(sink, ctx.root, "Project: " .. ctx.uproject .. "\nEngine:  " .. ctx.engine_root .. "\nCommand: " .. table.concat(cmd, " ") .. "\n", true)
 
 	local project_root = ctx.root
 	build_job = vim.system(cmd, {
 		cwd = ctx.root,
 		text = true,
 		stdout = function(_, data)
-			append_lines(buf, data, function(b, ln, t)
-				on_build_line(project_root, b, ln, t)
-			end)
+			append_build_chunk(sink, project_root, data, false)
 		end,
 		stderr = function(_, data)
-			append_lines(buf, data, function(b, ln, t)
-				on_build_line(project_root, b, ln, t, true)
-			end)
+			append_build_chunk(sink, project_root, data, true)
 		end,
 	}, function(result)
 		build_job = nil
 		build_pid = nil
 		local this_buf = build_buf
+		local this_output = build_output
 		build_buf = nil
+		build_output = nil
 		local was_cancelled = build_cancelled
 
 		vim.schedule(function()
@@ -418,7 +521,17 @@ local function start_build(args, callback)
 				local summary = build_summary(ok, result.code)
 				local level = ok and vim.log.levels.INFO or vim.log.levels.ERROR
 
-				if this_buf and vim.api.nvim_buf_is_valid(this_buf) then
+				if this_output and this_output.kind == "panel" then
+					this_output.panel.append(this_output.key, {"", summary}, {
+						focus = false,
+						line_groups = { nil, ok and "UCoreOutputSuccess" or "UCoreOutputError" },
+					})
+					if ok then
+						this_output.panel.finish(this_output.key, nil, { open = true })
+					else
+						this_output.panel.fail(this_output.key, nil, { open = true, focus = false })
+					end
+				elseif this_buf and vim.api.nvim_buf_is_valid(this_buf) then
 					append_lines(this_buf, "")
 					append_lines(this_buf, summary)
 				end
@@ -461,6 +574,33 @@ local function launch_editor(ctx)
 		return vim.notify("UnrealEditor.exe not found under: " .. tostring(ctx.engine_root), vim.log.levels.ERROR)
 	end
 
+	local panel = shared_output_panel()
+	if panel then
+		local key = panel.open_tab({
+			key = "ubuildtool:editor:" .. tostring(vim.loop.hrtime()),
+			title = "Unreal Editor",
+			kind = "unreal",
+			focus = true,
+		})
+		panel.replace(key, {
+			"Project: " .. tostring(ctx.project_name or ""),
+			"Engine:  " .. tostring(ctx.engine_root or ""),
+			"Editor:  " .. tostring(exe),
+			"",
+			"Opening Unreal Editor...",
+		}, {
+			line_groups = {
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
+				nil,
+				"UCoreOutputInfo",
+			},
+			focus = true,
+		})
+		panel.finish(key, nil, { open = true })
+	end
+
 	vim.system({
 		powershell(),
 		"-NoProfile",
@@ -492,13 +632,24 @@ function M.cancel_build()
 
 	build_cancelled = true
 	local buf = build_buf
+	local sink = build_output
 	local pid = build_pid or (build_job and build_job.pid) or nil
 	kill_process_tree(pid)
 	build_job = nil
 	build_pid = nil
 	build_buf = nil
+	build_output = nil
 
-	if buf and vim.api.nvim_buf_is_valid(buf) then
+	if sink and sink.kind == "panel" then
+		sink.panel.append(sink.key, {"", "UBuildTool build stopped"}, {
+			focus = false,
+			line_groups = { nil, "UCoreOutputWarning" },
+		})
+		sink.panel.finish(sink.key, nil, {
+			open = true,
+			status = "success",
+		})
+	elseif buf and vim.api.nvim_buf_is_valid(buf) then
 		append_lines(buf, "")
 		append_lines(buf, "UBuildTool build stopped")
 	end
