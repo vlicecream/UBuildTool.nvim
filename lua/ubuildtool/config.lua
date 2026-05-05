@@ -3,6 +3,13 @@ local M = {}
 local defaults = {
 	cache_dir = vim.fn.stdpath("cache") .. "/ubuildtool",
 	engine_roots = {},
+	startup = {
+		mode = "editor",
+		configuration = "Development",
+		platform = "Win64",
+		editor_target = nil,
+		game_target = nil,
+	},
 	build = {
 		open_quickfix_on_error = true,
 		include_warnings = true,

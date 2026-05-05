@@ -24,8 +24,14 @@ function M.dispatch(args)
 		["build-cancel"] = actions.build_cancel,
 		buildstop = actions.build_cancel,
 		buildcancel = actions.build_cancel,
+		launch = function()
+			actions.launch(tail)
+		end,
 		editor = function()
 			actions.editor(tail)
+		end,
+		game = function()
+			actions.game(tail)
 		end,
 		["clangd-db"] = function()
 			actions.clangd_database(tail)
@@ -53,7 +59,9 @@ function M.register()
 			local items = {
 				"build",
 				"build-stop",
+				"launch",
 				"editor",
+				"game",
 				"clangd-db",
 				"help",
 			}

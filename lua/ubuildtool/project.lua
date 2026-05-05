@@ -288,6 +288,26 @@ function M.editor_target_name(root)
 	return fallback or preferred
 end
 
+function M.game_target_name(root)
+	local base_name = M.project_name(root)
+	local candidates = vim.fn.glob(path_join(root, "Source/*.Target.cs"), false, true)
+	local fallback = nil
+
+	for _, path in ipairs(candidates) do
+		local name = tostring(path):match("([^/\\]+)%.Target%.cs$")
+		if name then
+			if name == base_name then
+				return base_name
+			end
+			if not name:match("Editor$") and not name:match("Server$") and not name:match("Client$") and not fallback then
+				fallback = name
+			end
+		end
+	end
+
+	return fallback or base_name
+end
+
 function M.unreal_build_tool(root)
 	local engine, err = M.engine_metadata(root)
 	if not engine or not engine.engine_root then
