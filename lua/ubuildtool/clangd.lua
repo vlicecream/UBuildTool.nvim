@@ -12,16 +12,57 @@ local function path_join(...)
 	return normalize(table.concat({ ... }, "/"):gsub("//+", "/"))
 end
 
+local function dirname(path)
+	path = normalize(path or ""):gsub("/+$", "")
+	return path:match("^(.*)/[^/]*$") or ""
+end
+
+local function fs_stat(path)
+	return path and uv.fs_stat(path) or nil
+end
+
 local function readable(path)
-	return path and vim.fn.filereadable(path) == 1
+	local stat = fs_stat(path)
+	return stat and stat.type == "file"
 end
 
 local function executable(path)
-	return path and (vim.fn.executable(path) == 1 or readable(path))
+	return readable(path)
 end
 
 local function path_exists(path)
-	return readable(path) or vim.fn.isdirectory(path) == 1
+	return fs_stat(path) ~= nil
+end
+
+local function is_dir(path)
+	local stat = fs_stat(path)
+	return stat and stat.type == "directory"
+end
+
+local function mkdirp(path)
+	path = normalize(path or "")
+	if path == "" or is_dir(path) then
+		return
+	end
+
+	local prefix = ""
+	local rest = path
+	local drive = rest:match("^%a:")
+	if drive then
+		prefix = drive
+		rest = rest:sub(#drive + 1):gsub("^/+", "")
+	elseif rest:sub(1, 1) == "/" then
+		prefix = "/"
+		rest = rest:gsub("^/+", "")
+	end
+
+	local current = prefix
+	for part in rest:gmatch("[^/]+") do
+		current = current == "" and part or (current:gsub("/$", "") .. "/" .. part)
+		if not is_dir(current) then
+			pcall(uv.fs_mkdir, current, 493)
+		end
+	end
 end
 
 local function normalize_compile_db_dir(value)
@@ -30,7 +71,7 @@ local function normalize_compile_db_dir(value)
 		return nil
 	end
 	if value:match("compile_commands%.json$") then
-		return normalize(vim.fn.fnamemodify(value, ":p:h"))
+		return dirname(normalize(vim.fs.abspath(value)))
 	end
 	return value
 end
@@ -46,35 +87,44 @@ local function project_cache_compile_commands_dir(root)
 		return nil
 	end
 	local paths = project.build_paths(root)
-	vim.fn.mkdir(paths.clangd_dir, "p")
+	mkdirp(paths.clangd_dir)
 	return normalize(paths.clangd_dir)
 end
 
 local function copy_file(source_path, target_path)
-	if uv and uv.fs_copyfile then
+	if uv.fs_copyfile then
 		local ok_copy = pcall(uv.fs_copyfile, source_path, target_path)
 		if ok_copy or readable(target_path) then
 			return true
 		end
 	end
 
-	local ok_read, lines = pcall(vim.fn.readfile, source_path)
-	if not ok_read then
+	local source = io.open(source_path, "rb")
+	if not source then
 		return false
 	end
-	local ok_write = pcall(vim.fn.writefile, lines, target_path)
-	return ok_write == true
+	local content = source:read("*a")
+	source:close()
+
+	mkdirp(dirname(target_path))
+	local target = io.open(target_path, "wb")
+	if not target then
+		return false
+	end
+	target:write(content or "")
+	target:close()
+	return true
 end
 
 local function delete_file(path)
 	if not path or path == "" then
 		return false
 	end
-	if uv and uv.fs_unlink then
+	if uv.fs_unlink then
 		local ok = pcall(uv.fs_unlink, path)
 		return ok
 	end
-	return pcall(vim.fn.delete, path) and vim.fn.filereadable(path) == 0
+	return false
 end
 
 function M.find_compilation_database(root)

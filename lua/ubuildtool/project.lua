@@ -3,6 +3,11 @@ local config = require("ubuildtool.config")
 local M = {}
 
 local uv = vim.uv or vim.loop
+local env_localappdata = os.getenv("LOCALAPPDATA")
+local env_userprofile = os.getenv("USERPROFILE")
+local env_nvim_appname = os.getenv("NVIM_APPNAME") or "nvim"
+local env_xdg_data_home = os.getenv("XDG_DATA_HOME")
+local env_home = os.getenv("HOME")
 
 local function normalize(path)
 	return path and path:gsub("\\", "/") or nil
@@ -84,19 +89,19 @@ end
 
 local function nvim_data_dir()
 	if is_windows() then
-		local base = vim.env.LOCALAPPDATA or (vim.env.USERPROFILE and (vim.env.USERPROFILE .. "/AppData/Local"))
+		local base = env_localappdata or (env_userprofile and (env_userprofile .. "/AppData/Local"))
 		if base and base ~= "" then
-			return normalize(base .. "/" .. (vim.env.NVIM_APPNAME or "nvim") .. "-data")
+			return normalize(base .. "/" .. env_nvim_appname .. "-data")
 		end
 	end
 
-	local xdg = vim.env.XDG_DATA_HOME
+	local xdg = env_xdg_data_home
 	if xdg and xdg ~= "" then
-		return normalize(xdg .. "/" .. (vim.env.NVIM_APPNAME or "nvim"))
+		return normalize(xdg .. "/" .. env_nvim_appname)
 	end
 
-	local home = vim.env.HOME or vim.env.USERPROFILE or "."
-	return normalize(home .. "/.local/share/" .. (vim.env.NVIM_APPNAME or "nvim"))
+	local home = env_home or env_userprofile or "."
+	return normalize(home .. "/.local/share/" .. env_nvim_appname)
 end
 
 local function path_join(...)
