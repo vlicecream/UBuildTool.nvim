@@ -28,6 +28,7 @@ local defaults = {
 	editor = {
 		build_before_open = true,
 		autosave = true,
+		prefer_configuration_executable = true,
 	},
 	clangd = {
 		auto_generate_compile_commands = true,

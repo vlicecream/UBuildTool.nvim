@@ -134,7 +134,35 @@ local function build_bat(engine_root)
 	return normalize(engine_root .. "/Engine/Build/BatchFiles/Build.bat")
 end
 
-local function editor_exe(engine_root)
+local function configuration_editor_exe(engine_root, platform, configuration)
+	configuration = tostring(configuration or "")
+	if configuration == "" or configuration == "Development" then
+		return nil
+	end
+
+	local suffix = tostring(platform or "Win64") .. "-" .. configuration
+	local candidates = {
+		normalize(engine_root .. "/Engine/Binaries/Win64/UnrealEditor-" .. suffix .. ".exe"),
+		normalize(engine_root .. "/Engine/Binaries/Win64/UE4Editor-" .. suffix .. ".exe"),
+	}
+
+	for _, path in ipairs(candidates) do
+		if executable(path) then
+			return path
+		end
+	end
+
+	return nil
+end
+
+local function editor_exe(engine_root, platform, configuration)
+	if (config.values.editor or {}).prefer_configuration_executable ~= false then
+		local configured = configuration_editor_exe(engine_root, platform, configuration)
+		if configured then
+			return configured
+		end
+	end
+
 	local candidates = {
 		normalize(engine_root .. "/Engine/Binaries/Win64/UnrealEditor.exe"),
 		normalize(engine_root .. "/Engine/Binaries/Win64/UE4Editor.exe"),
@@ -149,8 +177,8 @@ local function editor_exe(engine_root)
 	return nil
 end
 
-function M.editor_executable(engine_root)
-	return editor_exe(engine_root)
+function M.editor_executable(engine_root, platform, configuration)
+	return editor_exe(engine_root, platform, configuration)
 end
 
 local function normalize_startup_mode(mode)
@@ -806,7 +834,7 @@ local function resolve_launch_profile(mode_override)
 			return profile, nil
 		end
 
-		local editor = editor_exe(profile.engine_root)
+		local editor = editor_exe(profile.engine_root, profile.platform, profile.configuration)
 		if not editor then
 			return nil, "Unreal game executable was not found and UnrealEditor.exe fallback is unavailable"
 		end
@@ -818,7 +846,7 @@ local function resolve_launch_profile(mode_override)
 		return profile, nil
 	end
 
-	local editor = editor_exe(profile.engine_root)
+	local editor = editor_exe(profile.engine_root, profile.platform, profile.configuration)
 	if not editor then
 		return nil, "UnrealEditor.exe not found under: " .. tostring(profile.engine_root)
 	end

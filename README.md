@@ -69,6 +69,7 @@ require("ubuildtool").setup({
   editor = {
     build_before_open = true,
     autosave = true,
+    prefer_configuration_executable = true,
   },
   clangd = {
     auto_generate_compile_commands = true,
@@ -89,6 +90,8 @@ Build.bat -Target="<Project>Editor Win64 Development -Project=\"...\Project.upro
 ```
 
 Set `build.use_target_arguments = false` if you need the older positional `Build.bat <Target> <Platform> <Configuration> -Project=...` form.
+
+When opening the editor, `editor.prefer_configuration_executable` makes `DebugGame` prefer `UnrealEditor-Win64-DebugGame.exe` and `Debug` prefer `UnrealEditor-Win64-Debug.exe`, matching Rider-style launch behavior. If the configuration-specific executable is missing, UBuildTool falls back to `UnrealEditor.exe`.
 
 ## Notes
 
