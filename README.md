@@ -56,6 +56,15 @@ require("ubuildtool").setup({
     include_warnings = true,
     color_log = true,
     autosave = true,
+    use_target_arguments = true,
+    build_shader_compile_worker = true,
+    shader_compile_worker_target = "ShaderCompileWorker",
+    shader_compile_worker_platform = "Win64",
+    shader_compile_worker_configuration = "Development",
+    shader_compile_worker_quiet = true,
+    wait_mutex = true,
+    from_msbuild = true,
+    extra_args = {},
   },
   editor = {
     build_before_open = true,
@@ -72,6 +81,14 @@ require("ubuildtool").setup({
 `startup.mode` only controls whether normal launch opens `editor` or `game`.
 
 If you want what you call "debug mode", set `startup.configuration` to `DebugGame` or `Debug`. Do not put that into `startup.mode`.
+
+By default, builds use Rider-style Unreal Build Tool arguments:
+
+```text
+Build.bat -Target="<Project>Editor Win64 Development -Project=\"...\Project.uproject\"" -Target="ShaderCompileWorker Win64 Development -Project=\"...\Project.uproject\" -Quiet" -WaitMutex -FromMSBuild
+```
+
+Set `build.use_target_arguments = false` if you need the older positional `Build.bat <Target> <Platform> <Configuration> -Project=...` form.
 
 ## Notes
 
