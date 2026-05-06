@@ -2,26 +2,133 @@ local config = require("ubuildtool.config")
 
 local M = {}
 
+local uv = vim.uv or vim.loop
+
 local function normalize(path)
 	return path and path:gsub("\\", "/") or nil
 end
 
+local function basename(path)
+	path = normalize(path or "")
+	path = path:gsub("/+$", "")
+	return path:match("([^/]+)$") or ""
+end
+
+local function stable_hash12(text)
+	text = tostring(text or "")
+	local bitlib = bit or bit32
+	local h1 = 2166136261
+	local h2 = 16777619
+	for i = 1, #text do
+		local b = text:byte(i)
+		h1 = bitlib.bxor(h1, b)
+		h1 = (h1 * 16777619) % 4294967296
+		h2 = bitlib.bxor(h2, b + i)
+		h2 = (h2 * 2166136261) % 4294967296
+	end
+	return string.format("%08x%08x", h1, h2):sub(1, 12)
+end
+
+local function dirname(path)
+	path = normalize(path or ""):gsub("/+$", "")
+	return path:match("^(.*)/[^/]*$") or ""
+end
+
+local function fs_stat(path)
+	return path and uv.fs_stat(path) or nil
+end
+
 local function readable(path)
-	return path and vim.fn.filereadable(path) == 1
+	local stat = fs_stat(path)
+	return stat and stat.type == "file"
 end
 
 local function path_exists(path)
-	return readable(path) or vim.fn.isdirectory(path) == 1
+	return fs_stat(path) ~= nil
+end
+
+local function is_dir(path)
+	local stat = fs_stat(path)
+	return stat and stat.type == "directory"
+end
+
+local function mkdirp(path)
+	path = normalize(path or "")
+	if path == "" or is_dir(path) then
+		return
+	end
+
+	local prefix = ""
+	local rest = path
+	local drive = rest:match("^%a:")
+	if drive then
+		prefix = drive
+		rest = rest:sub(#drive + 1):gsub("^/+", "")
+	elseif rest:sub(1, 1) == "/" then
+		prefix = "/"
+		rest = rest:gsub("^/+", "")
+	end
+
+	local current = prefix
+	for part in rest:gmatch("[^/]+") do
+		current = current == "" and part or (current:gsub("/$", "") .. "/" .. part)
+		if not is_dir(current) then
+			pcall(uv.fs_mkdir, current, 493)
+		end
+	end
+end
+
+local function is_windows()
+	return package.config:sub(1, 1) == "\\"
+end
+
+local function nvim_data_dir()
+	if is_windows() then
+		local base = vim.env.LOCALAPPDATA or (vim.env.USERPROFILE and (vim.env.USERPROFILE .. "/AppData/Local"))
+		if base and base ~= "" then
+			return normalize(base .. "/" .. (vim.env.NVIM_APPNAME or "nvim") .. "-data")
+		end
+	end
+
+	local xdg = vim.env.XDG_DATA_HOME
+	if xdg and xdg ~= "" then
+		return normalize(xdg .. "/" .. (vim.env.NVIM_APPNAME or "nvim"))
+	end
+
+	local home = vim.env.HOME or vim.env.USERPROFILE or "."
+	return normalize(home .. "/.local/share/" .. (vim.env.NVIM_APPNAME or "nvim"))
 end
 
 local function path_join(...)
 	return normalize(table.concat({ ... }, "/"):gsub("//+", "/"))
 end
 
+local function list_target_files(root)
+	local source_dir = path_join(root, "Source")
+	local handle = uv.fs_scandir(source_dir)
+	local result = {}
+
+	if not handle then
+		return result
+	end
+
+	while true do
+		local name, typ = uv.fs_scandir_next(handle)
+		if not name then
+			break
+		end
+		if typ == "file" and name:match("%.Target%.cs$") then
+			table.insert(result, path_join(source_dir, name))
+		end
+	end
+
+	return result
+end
+
 local function project_cache_name(project_root)
 	local normalized = normalize(project_root)
-	local name = vim.fn.fnamemodify(normalized, ":t")
-	local hash = vim.fn.sha256(normalized):sub(1, 12)
+	local name = basename(normalized)
+	local hash = stable_hash12(normalized)
 	if name == "" then
 		return hash
 	end
@@ -29,14 +136,13 @@ local function project_cache_name(project_root)
 end
 
 local function read_json_file(path)
-	if vim.fn.filereadable(path) ~= 1 then
+	local file = path and io.open(path, "rb")
+	if not file then
 		return nil
 	end
-	local ok, lines = pcall(vim.fn.readfile, path)
-	if not ok then
-		return nil
-	end
-	local ok_decode, data = pcall(vim.json.decode, table.concat(lines, "\n"))
+	local content = file:read("*a")
+	file:close()
+	local ok_decode, data = pcall(vim.json.decode, content or "")
 	if not ok_decode then
 		return nil
 	end
@@ -44,8 +150,8 @@ local function read_json_file(path)
 end
 
 local function ucore_registry_path()
-	local cache_dir = normalize(vim.fn.stdpath("data") .. "/ucore")
-	vim.fn.mkdir(cache_dir, "p")
+	local cache_dir = normalize(nvim_data_dir() .. "/ucore")
+	mkdirp(cache_dir)
 	return cache_dir .. "/registry.json"
 end
 
@@ -86,10 +192,10 @@ function M.find_project_file(start_path)
 	end
 
 	local dir
-	if vim.fn.isdirectory(start_path) == 1 then
+	if is_dir(start_path) then
 		dir = start_path
 	else
-		dir = vim.fn.fnamemodify(start_path, ":p:h")
+		dir = dirname(normalize(vim.fs.abspath(start_path)))
 	end
 
 	local found = vim.fs.find(function(name)
@@ -109,7 +215,7 @@ function M.find_project_root(start_path)
 	if not project_file then
 		return nil
 	end
-	return normalize(vim.fn.fnamemodify(project_file, ":p:h"))
+	return dirname(normalize(vim.fs.abspath(project_file)))
 end
 
 function M.find_project_root_from_context()
@@ -129,7 +235,7 @@ function M.find_project_root_from_context()
 		end
 	end
 
-	local alt = vim.fn.bufnr("#")
+	local alt = tonumber(vim.v.alternate)
 	if alt and alt > 0 then
 		local alt_path = vim.api.nvim_buf_get_name(alt)
 		if alt_path and alt_path ~= "" then
@@ -157,19 +263,30 @@ function M.find_project_root_from_context()
 end
 
 function M.find_project_file_in_root(project_root)
-	local files = vim.fn.glob(project_root .. "/*.uproject", false, true)
-	return files[1] and normalize(files[1]) or nil
+	local scan = uv.fs_scandir(project_root)
+	if not scan then
+		return nil
+	end
+	while true do
+		local name, t = uv.fs_scandir_next(scan)
+		if not name then
+			break
+		end
+		if t == "file" and name:match("%.uproject$") then
+			return normalize(path_join(project_root, name))
+		end
+	end
+	return nil
 end
 
 function M.read_engine_association(uproject_path)
-	if not uproject_path or vim.fn.filereadable(uproject_path) ~= 1 then
+	local file = uproject_path and io.open(uproject_path, "rb")
+	if not file then
 		return nil
 	end
-	local ok, lines = pcall(vim.fn.readfile, uproject_path)
-	if not ok then
-		return nil
-	end
-	local ok_decode, data = pcall(vim.json.decode, table.concat(lines, "\n"))
+	local content = file:read("*a")
+	file:close()
+	local ok_decode, data = pcall(vim.json.decode, content or "")
 	if not ok_decode or type(data) ~= "table" then
 		return nil
 	end
@@ -181,8 +298,7 @@ function M.is_engine_root(path)
 		return false
 	end
 	path = normalize(path)
-	return vim.fn.isdirectory(path .. "/Engine/Source") == 1
-		or vim.fn.filereadable(path .. "/Engine/Build/Build.version") == 1
+	return is_dir(path .. "/Engine/Source") or readable(path .. "/Engine/Build/Build.version")
 end
 
 function M.find_engine_root_from_config(association)
@@ -215,16 +331,16 @@ function M.find_engine_root_from_launcher(association)
 end
 
 function M.find_engine_root_from_registry(association)
-	if vim.fn.has("win32") ~= 1 then
+	if not is_windows() then
 		return nil
 	end
 
-	local output = vim.fn.systemlist({
+	local result = vim.system({
 		"reg",
 		"query",
 		"HKCU\\Software\\Epic Games\\Unreal Engine\\Builds",
-	})
-	if vim.v.shell_error ~= 0 then
+	}, { text = true }):wait()
+	if result.code ~= 0 then
 		return nil
 	end
 
@@ -233,7 +349,7 @@ function M.find_engine_root_from_registry(association)
 		candidates[key] = true
 	end
 
-	for _, line in ipairs(output) do
+	for line in (result.stdout or ""):gmatch("[^\r\n]+") do
 		line = vim.trim(line)
 		local name, path = line:match("^(%S+)%s+REG_SZ%s+(.+)$")
 		path = path and vim.trim(path)
@@ -296,15 +412,15 @@ end
 function M.project_name(root)
 	local project_file = M.find_project_file_in_root(root)
 	if not project_file then
-		return vim.fn.fnamemodify(root, ":t")
+		return basename(root)
 	end
-	return vim.fn.fnamemodify(project_file, ":t:r")
+	return (basename(project_file):gsub("%.uproject$", ""))
 end
 
 function M.editor_target_name(root)
 	local base_name = M.project_name(root)
 	local preferred = base_name .. "Editor"
-	local candidates = vim.fn.glob(path_join(root, "Source/*.Target.cs"), false, true)
+	local candidates = list_target_files(root)
 	local fallback = nil
 
 	for _, path in ipairs(candidates) do
@@ -324,7 +440,7 @@ end
 
 function M.game_target_name(root)
 	local base_name = M.project_name(root)
-	local candidates = vim.fn.glob(path_join(root, "Source/*.Target.cs"), false, true)
+	local candidates = list_target_files(root)
 	local fallback = nil
 
 	for _, path in ipairs(candidates) do
@@ -365,7 +481,7 @@ end
 function M.build_paths(project_root)
 	local cache_dir = normalize(config.values.cache_dir)
 	local project_cache_dir = path_join(cache_dir, "projects", project_cache_name(project_root))
-	vim.fn.mkdir(project_cache_dir, "p")
+	mkdirp(project_cache_dir)
 	return {
 		project_root = normalize(project_root),
 		cache_dir = project_cache_dir,
