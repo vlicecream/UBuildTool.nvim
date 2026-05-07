@@ -490,7 +490,6 @@ function M.build_paths(project_root)
 	return {
 		project_root = normalize(project_root),
 		cache_dir = project_cache_dir,
-		clangd_dir = path_join(project_cache_dir, "clangd"),
 	}
 end
 

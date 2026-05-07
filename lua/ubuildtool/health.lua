@@ -1,4 +1,3 @@
-local clangd = require("ubuildtool.clangd")
 local config = require("ubuildtool.config")
 local project = require("ubuildtool.project")
 
@@ -75,13 +74,9 @@ function M.check()
 		})
 	end
 
-	local ctx = clangd.status(root)
-	info("auto generate compile_commands.json: " .. tostring(ctx.auto_generate_compile_commands))
-	if ctx.compile_commands_dir then
-		ok("compile_commands.json found under: " .. ctx.compile_commands_dir)
-	else
-		info("compile_commands.json not found yet")
-	end
+	info("startup mode: " .. tostring(config.values.startup.mode))
+	info("startup configuration: " .. tostring(config.values.startup.configuration))
+	info("startup platform: " .. tostring(config.values.startup.platform))
 end
 
 return M

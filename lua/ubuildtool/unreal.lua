@@ -541,15 +541,19 @@ local function append_build_chunk(sink, project_root, data, no_parse)
 end
 
 local function fill_quickfix()
-	if vim.tbl_isempty(build_diagnostics) then
-		return
-	end
-
 	local items = {}
 	for _, item in ipairs(build_diagnostics) do
 		if config.values.build.include_warnings ~= false or item.type == "E" then
 			table.insert(items, item)
 		end
+	end
+
+	pcall(function()
+		require("ucore.diagnostics").from_quickfix(items)
+	end)
+
+	if vim.tbl_isempty(items) then
+		return
 	end
 
 	vim.fn.setqflist(items, "r")

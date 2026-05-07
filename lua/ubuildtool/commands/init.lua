@@ -33,12 +33,6 @@ function M.dispatch(args)
 		game = function()
 			actions.game(tail)
 		end,
-		["clangd-db"] = function()
-			actions.clangd_database(tail)
-		end,
-		clangddb = function()
-			actions.clangd_database(tail)
-		end,
 	}
 
 	local handler = handlers[sub]
@@ -62,7 +56,6 @@ function M.register()
 				"launch",
 				"editor",
 				"game",
-				"clangd-db",
 				"help",
 			}
 			local needle = (arglead or ""):lower()

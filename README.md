@@ -7,7 +7,6 @@ Standalone Unreal Engine build tooling for Neovim.
 - building the configured default Unreal target
 - stopping running builds
 - opening the current project in Unreal Editor or Game mode
-- preparing `compile_commands.json` for `clangd`
 - build log coloring and quickfix population
 - optional shared bottom output tabs when `UCore.nvim` is present
 
@@ -34,7 +33,6 @@ Standalone Unreal Engine build tooling for Neovim.
 :UBuildTool game
 :UBuildTool editor !
 :UBuildTool game !
-:UBuildTool clangd-db
 :checkhealth ubuildtool
 ```
 
@@ -71,11 +69,6 @@ require("ubuildtool").setup({
     autosave = true,
     prefer_configuration_executable = true,
   },
-  clangd = {
-    auto_generate_compile_commands = true,
-    prewarm_on_setup = true,
-    remove_source_compile_commands = true,
-  },
 })
 ```
 
@@ -103,5 +96,4 @@ When opening the editor, `editor.prefer_configuration_executable` makes `DebugGa
 - `editor` always forces Unreal Editor launch.
 - `game` always forces Unreal Game launch.
 - `build` without explicit arguments uses `startup.configuration`, `startup.platform`, and the mode-specific target from this plugin's config.
-- `clangd-db` stages `compile_commands.json` into the plugin cache under `stdpath("cache")/ubuildtool/`
 - when `UCore.nvim` is loaded, build logs and Unreal Editor launch messages are sent into the shared bottom output workspace instead of opening a separate build split

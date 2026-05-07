@@ -30,11 +30,6 @@ local defaults = {
 		autosave = true,
 		prefer_configuration_executable = true,
 	},
-	clangd = {
-		auto_generate_compile_commands = true,
-		prewarm_on_setup = true,
-		remove_source_compile_commands = true,
-	},
 }
 
 M.values = vim.deepcopy(defaults)
