@@ -101,6 +101,42 @@ local function ps_quote(text)
 	return "'" .. tostring(text):gsub("'", "''") .. "'"
 end
 
+local function ps_clear_p4_env_prefix()
+	return table.concat({
+		"Remove-Item Env:P4CONFIG -ErrorAction SilentlyContinue",
+		"Remove-Item Env:P4PORT -ErrorAction SilentlyContinue",
+		"Remove-Item Env:P4USER -ErrorAction SilentlyContinue",
+		"Remove-Item Env:P4CLIENT -ErrorAction SilentlyContinue",
+		"Remove-Item Env:P4CHARSET -ErrorAction SilentlyContinue",
+	}, "; ")
+end
+
+local function env_value(name)
+	local value = vim.fn.getenv(name)
+	if value == nil or value == vim.NIL or value == "" then
+		return "<unset>"
+	end
+	return tostring(value)
+end
+
+local function launch_environment_lines(root, shell_name)
+	return {
+		"LaunchCwd:   " .. tostring(root or ""),
+		"LaunchShell: " .. tostring(shell_name or ""),
+		"P4CONFIG:    " .. env_value("P4CONFIG"),
+		"P4PORT:      " .. env_value("P4PORT"),
+		"P4USER:      " .. env_value("P4USER"),
+		"P4CLIENT:    " .. env_value("P4CLIENT"),
+	}
+end
+
+local function write_ucore_log(tag, fields)
+	local ok, logger = pcall(require, "ucore.log")
+	if ok and logger and type(logger.write) == "function" then
+		logger.write(tag, fields)
+	end
+end
+
 local function current_context()
 	local root = project.find_project_root_from_context()
 	if not root then
@@ -735,6 +771,8 @@ local function launch_profile(profile)
 	end
 
 	local panel = shared_output_panel()
+	local shell_name = powershell()
+	local env_lines = launch_environment_lines(profile.root, shell_name)
 	if panel then
 		local key = panel.open_tab({
 			key = "workspace:unreal",
@@ -748,11 +786,25 @@ local function launch_profile(profile)
 			"Mode:    " .. tostring(profile.mode or ""),
 			"Target:  " .. tostring(profile.target or ""),
 			"Program: " .. tostring(program),
+			env_lines[1],
+			env_lines[2],
+			env_lines[3],
+			env_lines[4],
+			env_lines[5],
+			env_lines[6],
 			"",
 			"Opening " .. tostring(profile.display_name or "Unreal") .. "...",
 		}, {
 			title = "Unreal",
 			line_groups = {
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
+				"UCoreOutputCommand",
 				"UCoreOutputCommand",
 				"UCoreOutputCommand",
 				"UCoreOutputCommand",
@@ -765,17 +817,31 @@ local function launch_profile(profile)
 		panel.finish(key, nil, { open = true })
 	end
 
+	write_ucore_log("ubuildtool.unreal_launch", {
+		project = profile.project_name,
+		program = program,
+		root = profile.root,
+		shell = shell_name,
+		p4_env_mode = "cleared_for_child_process",
+		p4config = env_value("P4CONFIG"),
+		p4port = env_value("P4PORT"),
+		p4user = env_value("P4USER"),
+		p4client = env_value("P4CLIENT"),
+	})
+
 	vim.system({
-		powershell(),
+		shell_name,
 		"-NoProfile",
 		"-ExecutionPolicy",
 		"Bypass",
 		"-Command",
-		"Start-Process -FilePath "
+		ps_clear_p4_env_prefix()
+			.. "; Start-Process -FilePath "
 			.. ps_quote(program)
 			.. " -ArgumentList @("
 			.. table.concat(vim.tbl_map(ps_quote, profile.program_args or {}), ", ")
-			.. ")",
+			.. ") -WorkingDirectory "
+			.. ps_quote(profile.root),
 	}, { cwd = profile.root }, function() end)
 
 	vim.notify("Opening " .. tostring(profile.display_name or "Unreal") .. ": " .. tostring(profile.project_name or ""), vim.log.levels.INFO)
