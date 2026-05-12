@@ -761,7 +761,7 @@ local function launch_profile(profile)
 	end
 
 	local panel = shared_output_panel()
-	local shell_name = powershell()
+	local shell_name = "direct"
 	local env_lines = launch_environment_lines(profile.root, shell_name)
 	if panel then
 		local key = panel.open_tab({
@@ -818,19 +818,18 @@ local function launch_profile(profile)
 		p4client = env_value("P4CLIENT"),
 	})
 
-	vim.system({
-		shell_name,
-		"-NoProfile",
-		"-ExecutionPolicy",
-		"Bypass",
-		"-Command",
-		"Start-Process -FilePath "
-			.. ps_quote(program)
-			.. " -ArgumentList @("
-			.. table.concat(vim.tbl_map(ps_quote, profile.program_args or {}), ", ")
-			.. ") -WorkingDirectory "
-			.. ps_quote(profile.root),
-	}, { cwd = profile.root }, function() end)
+	local argv = { program }
+	for _, arg in ipairs(profile.program_args or {}) do
+		table.insert(argv, tostring(arg))
+	end
+
+	local job = vim.fn.jobstart(argv, {
+		detach = true,
+		cwd = profile.root,
+	})
+	if tonumber(job or 0) <= 0 then
+		return vim.notify("Failed to open " .. tostring(profile.display_name or "Unreal"), vim.log.levels.ERROR)
+	end
 
 	vim.notify("Opening " .. tostring(profile.display_name or "Unreal") .. ": " .. tostring(profile.project_name or ""), vim.log.levels.INFO)
 end
