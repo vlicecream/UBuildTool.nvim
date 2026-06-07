@@ -17,21 +17,25 @@ local error = health.error or health.report_error
 local info = health.info or health.report_info
 
 -- Return whether one executable is available on PATH.
+-- 返回 PATH 上是否有一个可执行文件可用。
 local function executable(name)
 	return vim.fn.executable(name) == 1
 end
 
 -- Return whether one file exists and is readable.
+-- 返回一个文件是否存在并且可读。
 local function readable(path)
 	return path and vim.fn.filereadable(path) == 1
 end
 
 -- Return whether one directory exists on disk.
+-- 返回磁盘上是否存在一个目录。
 local function is_dir(path)
 	return path and vim.fn.isdirectory(path) == 1
 end
 
 -- Check cache, project, engine, and UBT prerequisites for the current context.
+-- 检查当前上下文的缓存、项目、引擎和 UBT 先决条件。
 function M.check()
 	start("UBuildTool.nvim")
 

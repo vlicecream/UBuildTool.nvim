@@ -24,6 +24,7 @@ local highlights_setup = false
 local on_build_line
 
 -- Reuse the shared UCore output panel when it is available.
+-- 重用共享的 UCore 输出面板（如果可用）。
 local function shared_output_panel()
 	local panel = rawget(_G, "__ucore_output_panel_api")
 	if type(panel) == "table" and type(panel.open_tab) == "function" then
@@ -33,6 +34,7 @@ local function shared_output_panel()
 end
 
 -- Define build-log highlight groups once for the current session.
+-- 为当前会话定义一次构建日志突出显示组。
 local function setup_highlights()
 	if highlights_setup then
 		return
@@ -45,6 +47,7 @@ local function setup_highlights()
 end
 
 -- Classify one build log line into a semantic output group.
+-- 将一个构建日志行分类到语义输出组中。
 local function build_line_group(text)
 	text = tostring(text or "")
 	local lower = text:lower()
@@ -75,6 +78,7 @@ local function build_line_group(text)
 end
 
 -- Map shared UCore output groups back to UBuildTool-local highlight groups.
+-- 将共享 UCore 输出组映射回 UBuildTool 本地突出显示组。
 local function local_build_group(group)
 	if group == "UCoreOutputCommand" then
 		return "UBuildToolBuildCommand"
@@ -92,31 +96,37 @@ local function local_build_group(group)
 end
 
 -- Normalize one filesystem path to forward-slash form.
+-- 将一个文件系统路径规范为正斜杠形式。
 local function normalize(path)
 	return path and path:gsub("\\", "/") or nil
 end
 
 -- Return whether one file path is readable.
+-- 返回一个文件路径是否可读。
 local function readable(path)
 	return path and vim.fn.filereadable(path) == 1
 end
 
 -- Return whether a path can be executed directly or at least exists as a file.
+-- 返回路径是否可以直接执行或至少作为文件存在。
 local function executable(path)
 	return path and (vim.fn.executable(path) == 1 or readable(path))
 end
 
 -- Prefer PowerShell Core when available and fall back to Windows PowerShell otherwise.
+-- 优先使用 PowerShell Core；如果不可用，则回退到 Windows PowerShell。
 local function powershell()
 	return vim.fn.executable("pwsh") == 1 and "pwsh" or "powershell"
 end
 
 -- Quote one string for use inside a PowerShell command.
+-- 引用一个字符串以在 PowerShell 命令中使用。
 local function ps_quote(text)
 	return "'" .. tostring(text):gsub("'", "''") .. "'"
 end
 
 -- Read one environment variable and return a printable placeholder when unset.
+-- 读取一个环境变量并在取消设置时返回一个可打印占位符。
 local function env_value(name)
 	local value = vim.fn.getenv(name)
 	if value == nil or value == vim.NIL or value == "" then
@@ -126,6 +136,7 @@ local function env_value(name)
 end
 
 -- Build the environment summary shown when launching Unreal through the shared output panel.
+-- 构建通过共享输出面板启动 Unreal 时显示的环境摘要。
 local function launch_environment_lines(root, shell_name)
 	return {
 		"LaunchCwd:   " .. tostring(root or ""),
@@ -138,6 +149,7 @@ local function launch_environment_lines(root, shell_name)
 end
 
 -- Write one structured launch/build event into the optional UCore logger.
+-- 将一个结构化的启动/构建事件写入可选的 UCore 记录器。
 local function write_ucore_log(tag, fields)
 	local ok, logger = pcall(require, "ucore.log")
 	if ok and logger and type(logger.write) == "function" then
@@ -146,6 +158,7 @@ local function write_ucore_log(tag, fields)
 end
 
 -- Resolve the active project, .uproject, and engine context for build or launch actions.
+-- 解析用于构建或启动操作的活动项目、.uproject 和引擎上下文。
 local function current_context()
 	local root = project.find_project_root_from_context()
 	if not root then
@@ -172,16 +185,19 @@ local function current_context()
 end
 
 -- Expose the resolved Unreal project context to other modules.
+-- 将已解析的 Unreal 项目上下文公开给其他模块。
 function M.current_context()
 	return current_context()
 end
 
 -- Return the expected Build.bat path under one engine root.
+-- 返回一个引擎根目录下预期的 Build.bat 路径。
 local function build_bat(engine_root)
 	return normalize(engine_root .. "/Engine/Build/BatchFiles/Build.bat")
 end
 
 -- Prefer a configuration-specific editor executable when one exists.
+-- 首选配置特定的编辑器可执行文件（如果存在）。
 local function configuration_editor_exe(engine_root, platform, configuration)
 	configuration = tostring(configuration or "")
 	if configuration == "" or configuration == "Development" then
@@ -204,6 +220,7 @@ local function configuration_editor_exe(engine_root, platform, configuration)
 end
 
 -- Resolve the best editor executable for the chosen engine, platform, and configuration.
+-- 为所选引擎、平台和配置确定最佳的编辑器可执行文件。
 local function editor_exe(engine_root, platform, configuration)
 	if (config.values.editor or {}).prefer_configuration_executable ~= false then
 		local configured = configuration_editor_exe(engine_root, platform, configuration)
@@ -227,11 +244,13 @@ local function editor_exe(engine_root, platform, configuration)
 end
 
 -- Expose editor executable resolution to callers that need launch details.
+-- 向需要启动详细信息的调用者公开编辑器可执行解析。
 function M.editor_executable(engine_root, platform, configuration)
 	return editor_exe(engine_root, platform, configuration)
 end
 
 -- Normalize startup mode names to the supported editor/game set.
+-- 将启动模式名称标准化为支持的编辑器/游戏集。
 local function normalize_startup_mode(mode)
 	mode = tostring(mode or ""):lower()
 	if mode == "game" then
@@ -241,6 +260,7 @@ local function normalize_startup_mode(mode)
 end
 
 -- Merge startup config defaults with the current project context.
+-- 将启动配置默认值与当前项目上下文合并。
 local function startup_defaults(ctx, mode_override)
 	local startup = config.values.startup or {}
 	local mode = normalize_startup_mode(mode_override or startup.mode)
@@ -261,6 +281,7 @@ local function startup_defaults(ctx, mode_override)
 end
 
 -- Build the resolved startup profile used by launch commands.
+-- 构建启动命令使用的解析启动配置文件。
 function M.startup_profile(mode_override)
 	local ctx, err = current_context()
 	if not ctx then
@@ -272,6 +293,7 @@ function M.startup_profile(mode_override)
 end
 
 -- Build the runtime executable candidates for a packaged or local game target.
+-- 为打包或本地游戏目标构建运行时可执行候选文件。
 local function game_exe_candidates(root, target, platform, configuration, project_name)
 	local base = normalize(root .. "/Binaries/" .. tostring(platform))
 	local items = {
@@ -288,6 +310,7 @@ local function game_exe_candidates(root, target, platform, configuration, projec
 end
 
 -- Resolve the first existing game executable from the known candidate paths.
+-- 从已知候选路径解析第一个现有游戏可执行文件。
 function M.game_executable(root, opts)
 	opts = opts or {}
 	local target = opts.target or project.game_target_name(root)
@@ -305,6 +328,7 @@ function M.game_executable(root, opts)
 end
 
 -- Save modified project buffers before starting a build or launching the editor.
+-- 在开始构建或启动编辑器之前保存修改的项目缓冲区。
 local function save_modified_project_buffers(root)
 	root = normalize(root)
 	if not root or root == "" then
@@ -324,6 +348,7 @@ local function save_modified_project_buffers(root)
 end
 
 -- Build the exact PowerShell command line used to invoke Unreal's Build.bat.
+-- 构建用于调用 Unreal 的 Build.bat 的精确 PowerShell 命令行。
 local function build_command(ctx, opts)
 	local bat = build_bat(ctx.engine_root)
 	if not readable(bat) then
@@ -338,6 +363,7 @@ local function build_command(ctx, opts)
 
 	if build.use_target_arguments ~= false then
 		-- Package one -Target argument in the format expected by Build.bat.
+		-- 以 Build.bat 所需的格式打包第一个 -Target 参数。
 		local function target_arg(name, target_platform, target_config, extra)
 			local spec = table.concat({
 				tostring(name),
@@ -388,6 +414,7 @@ local function build_command(ctx, opts)
 end
 
 -- Parse optional build arguments and merge them with startup defaults.
+-- 解析可选的构建参数并将它们与启动默认值合并。
 local function parse_build_args(args, ctx, mode_override)
 	args = vim.trim(args or "")
 	local tokens = {}
@@ -404,6 +431,7 @@ local function parse_build_args(args, ctx, mode_override)
 end
 
 -- Create a scratch buffer that displays build output when the shared panel is unavailable.
+-- 创建一个临时缓冲区，用于在共享面板不可用时显示构建输出。
 local function create_log_buffer(title)
 	local previous_win = vim.api.nvim_get_current_win()
 	vim.cmd("botright 15new")
@@ -430,6 +458,7 @@ local function create_log_buffer(title)
 end
 
 -- Keep all visible build windows scrolled to the newest output line.
+-- 将所有可见的构建窗口滚动到最新的输出行。
 local function scroll_to_bottom(buf)
 	for _, win in ipairs(vim.fn.win_findbuf(buf)) do
 		local line_count = vim.api.nvim_buf_line_count(buf)
@@ -438,6 +467,7 @@ local function scroll_to_bottom(buf)
 end
 
 -- Append output text to one log buffer and invoke per-line processing hooks.
+-- 将输出文本附加到一个日志缓冲区并调用每行处理挂钩。
 local function append_lines(buf, data, on_line)
 	if not data or data == "" then
 		return
@@ -471,6 +501,7 @@ local function append_lines(buf, data, on_line)
 end
 
 -- Parse one compiler or linker output line into a quickfix-style diagnostic item.
+-- 将一个编译器或链接器输出行解析为快速修复样式的诊断项。
 local function parse_diagnostic_line(line, project_root)
 	local path, lnum, col, kind, msg = line:match(
 		"^(.-)%((%d+)(?:,(%d+))?%)%s*:%s*(error|warning)%s+(.+)$"
@@ -514,6 +545,7 @@ local function parse_diagnostic_line(line, project_root)
 end
 
 -- Apply semantic highlighting to one build log line when color output is enabled.
+-- 启用颜色输出时，将语义突出显示应用于一个构建日志行。
 local function color_build_line(buf, line_num, text)
 	if not config.values.build.color_log then
 		return
@@ -532,6 +564,7 @@ local function color_build_line(buf, line_num, text)
 end
 
 -- Split one stdout or stderr chunk into normalized display lines.
+-- 将一个 stdout 或 stderr 块拆分为标准化显示行。
 local function split_lines(data)
 	if not data or data == "" then
 		return {}
@@ -546,6 +579,7 @@ local function split_lines(data)
 end
 
 -- Create the active build output sink, preferring the shared output panel.
+-- 创建活动的构建输出接收器，首选共享输出面板。
 local function build_output_sink(title)
 	local panel = shared_output_panel()
 	if panel then
@@ -568,6 +602,7 @@ local function build_output_sink(title)
 end
 
 -- Append a build output chunk and optionally parse diagnostics from each line.
+-- 附加构建输出块并可选择解析每行的诊断信息。
 local function append_build_chunk(sink, project_root, data, no_parse)
 	if not data or data == "" then
 		return
@@ -608,6 +643,7 @@ local function append_build_chunk(sink, project_root, data, no_parse)
 end
 
 -- Publish parsed build diagnostics into quickfix and UCore diagnostic views.
+-- 将解析的构建诊断发布到 QuickFix 和 UCore 诊断视图中。
 local function fill_quickfix()
 	local items = {}
 	for _, item in ipairs(build_diagnostics) do
@@ -633,6 +669,7 @@ local function fill_quickfix()
 end
 
 -- Summarize build completion status, error count, warning count, and exit code.
+-- 总结构建完成状态、错误计数、警告计数和退出代码。
 local function build_summary(ok, exit_code)
 	local parts = {}
 	table.insert(parts, ok and "Build succeeded" or "Build failed")
@@ -665,6 +702,7 @@ on_build_line = function(project_root, buf, line_num, text, no_parse)
 end
 
 -- Reset build-scoped diagnostics and cancellation flags before a new job starts.
+-- 在新作业开始之前重置构建范围的诊断和取消标志。
 local function reset_diagnostics()
 	build_diagnostics = {}
 	build_error_count = 0
@@ -673,6 +711,7 @@ local function reset_diagnostics()
 end
 
 -- Start one asynchronous Unreal build and stream output into the active sink.
+-- 启动一个异步 Unreal 构建并将输出流式传输到活动接收器中。
 local function start_build(args, callback, mode_override)
 	callback = callback or function() end
 
@@ -782,11 +821,13 @@ local function start_build(args, callback, mode_override)
 end
 
 -- Return whether the current host platform is Windows.
+-- 返回当前主机平台是否为Windows。
 local function is_windows()
 	return package.config:sub(1, 1) == "\\"
 end
 
 -- Terminate the active build process tree on the current platform.
+-- 终止当前平台上活动的构建进程树。
 local function kill_process_tree(pid)
 	if not pid then
 		return false
@@ -804,6 +845,7 @@ local function kill_process_tree(pid)
 end
 
 -- Launch one resolved Unreal profile and mirror the launch context into the shared output panel.
+-- 启动一个已解析的虚幻配置文件并将启动上下文镜像到共享输出面板中。
 local function launch_profile(profile)
 	local program = profile.program
 	if not program then
@@ -886,21 +928,25 @@ local function launch_profile(profile)
 end
 
 -- Start a build using the default startup/build profile.
+-- 使用默认启动/构建配置文件开始构建。
 function M.build(args)
 	start_build(args)
 end
 
 -- Start a build and forward completion status to the supplied callback.
+-- 启动构建并将完成状态转发给提供的回调。
 function M.build_async(args, callback)
 	start_build(args, callback)
 end
 
 -- Return whether a build job is currently active.
+-- 返回构建作业当前是否处于活动状态。
 function M.is_build_running()
 	return build_job ~= nil
 end
 
 -- Stop the active build job and close out any remaining UI state.
+-- 停止活动的构建作业并关闭任何剩余的 UI 状态。
 function M.cancel_build()
 	if not build_job then
 		return vim.notify("No UBuildTool build is running", vim.log.levels.INFO)
@@ -932,6 +978,7 @@ function M.cancel_build()
 end
 
 -- Resolve the executable and arguments needed to launch editor or game mode.
+-- 解析启动编辑器或游戏模式所需的可执行文件和参数。
 local function resolve_launch_profile(mode_override)
 	local profile, err = M.startup_profile(mode_override)
 	if not profile then
@@ -971,6 +1018,7 @@ local function resolve_launch_profile(mode_override)
 end
 
 -- Build first when configured, then launch the resolved editor or game profile.
+-- 配置后首先构建，然后启动解析的编辑器或游戏配置文件。
 function M.open_mode(mode_override, args)
 	local profile, err = resolve_launch_profile(mode_override)
 	if not profile then
@@ -996,16 +1044,19 @@ function M.open_mode(mode_override, args)
 end
 
 -- Build and open Unreal Editor mode.
+-- 构建并打开虚幻编辑器模式。
 function M.open_editor(args)
 	return M.open_mode("editor", args)
 end
 
 -- Build and open Unreal Game mode.
+-- 构建并打开虚幻游戏模式。
 function M.open_game(args)
 	return M.open_mode("game", args)
 end
 
 -- Build and open whichever startup mode is configured by default.
+-- 构建并打开默认配置的启动模式。
 function M.open_startup(args)
 	return M.open_mode(nil, args)
 end

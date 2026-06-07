@@ -9,6 +9,7 @@ local M = {}
 local initialized = false
 
 -- Tear down registered commands and stop any running build job before reinitializing.
+-- 在重新初始化之前，拆除已注册的命令并停止任何正在运行的构建作业。
 function M.reset()
 	pcall(function()
 		local unreal = require("ubuildtool.unreal")
@@ -21,6 +22,7 @@ function M.reset()
 end
 
 -- Apply configuration and register the user-facing UBuildTool commands.
+-- 应用配置并注册面向用户的 UBuildTool 命令。
 function M.setup(opts)
 	if initialized then
 		M.reset()

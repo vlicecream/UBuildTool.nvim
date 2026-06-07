@@ -41,6 +41,7 @@ local defaults = {
 M.values = vim.deepcopy(defaults)
 
 -- Merge user options into the default configuration table and cache the result.
+-- 将用户选项合并到默认配置表中并缓存结果。
 function M.setup(opts)
 	M.values = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
 	return M.values

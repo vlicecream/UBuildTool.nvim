@@ -5,6 +5,7 @@
 -- License: MIT
 
 -- Unload cached UBuildTool modules so re-sourcing the plugin resets state cleanly.
+-- 卸载缓存的 UBuildTool 模块，以便重新采购插件以干净地重置状态。
 local function unload_ubuildtool()
 	local ok, existing = pcall(require, "ubuildtool")
 	if ok and type(existing) == "table" and type(existing.reset) == "function" then
