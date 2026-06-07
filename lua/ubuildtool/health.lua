@@ -1,3 +1,9 @@
+-- Author: Ame林汀
+-- Website: vlicecream.github.io
+-- File: lua/ubuildtool/health.lua
+-- Purpose: Report UBuildTool runtime prerequisites through :checkhealth.
+-- License: MIT
+
 local config = require("ubuildtool.config")
 local project = require("ubuildtool.project")
 
@@ -10,18 +16,22 @@ local warn = health.warn or health.report_warn
 local error = health.error or health.report_error
 local info = health.info or health.report_info
 
+-- Return whether one executable is available on PATH.
 local function executable(name)
 	return vim.fn.executable(name) == 1
 end
 
+-- Return whether one file exists and is readable.
 local function readable(path)
 	return path and vim.fn.filereadable(path) == 1
 end
 
+-- Return whether one directory exists on disk.
 local function is_dir(path)
 	return path and vim.fn.isdirectory(path) == 1
 end
 
+-- Check cache, project, engine, and UBT prerequisites for the current context.
 function M.check()
 	start("UBuildTool.nvim")
 

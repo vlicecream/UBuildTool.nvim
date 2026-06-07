@@ -1,7 +1,14 @@
+-- Author: Ame林汀
+-- Website: vlicecream.github.io
+-- File: lua/ubuildtool/init.lua
+-- Purpose: Initialize, register, and reset the UBuildTool plugin runtime.
+-- License: MIT
+
 local M = {}
 
 local initialized = false
 
+-- Tear down registered commands and stop any running build job before reinitializing.
 function M.reset()
 	pcall(function()
 		local unreal = require("ubuildtool.unreal")
@@ -13,6 +20,7 @@ function M.reset()
 	initialized = false
 end
 
+-- Apply configuration and register the user-facing UBuildTool commands.
 function M.setup(opts)
 	if initialized then
 		M.reset()

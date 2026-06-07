@@ -1,3 +1,9 @@
+-- Author: Ame林汀
+-- Website: vlicecream.github.io
+-- File: lua/ubuildtool/unreal.lua
+-- Purpose: Build Unreal targets, collect build diagnostics, and launch editor or game executables.
+-- License: MIT
+
 local config = require("ubuildtool.config")
 local project = require("ubuildtool.project")
 
@@ -17,6 +23,7 @@ local build_ns = vim.api.nvim_create_namespace("ubuildtool_build_log")
 local highlights_setup = false
 local on_build_line
 
+-- Reuse the shared UCore output panel when it is available.
 local function shared_output_panel()
 	local panel = rawget(_G, "__ucore_output_panel_api")
 	if type(panel) == "table" and type(panel.open_tab) == "function" then
@@ -25,6 +32,7 @@ local function shared_output_panel()
 	return nil
 end
 
+-- Define build-log highlight groups once for the current session.
 local function setup_highlights()
 	if highlights_setup then
 		return
@@ -36,6 +44,7 @@ local function setup_highlights()
 	vim.api.nvim_set_hl(0, "UBuildToolBuildCommand", { fg = "#4FC1FF" })
 end
 
+-- Classify one build log line into a semantic output group.
 local function build_line_group(text)
 	text = tostring(text or "")
 	local lower = text:lower()
@@ -65,6 +74,7 @@ local function build_line_group(text)
 	return nil
 end
 
+-- Map shared UCore output groups back to UBuildTool-local highlight groups.
 local function local_build_group(group)
 	if group == "UCoreOutputCommand" then
 		return "UBuildToolBuildCommand"
@@ -81,26 +91,32 @@ local function local_build_group(group)
 	return group
 end
 
+-- Normalize one filesystem path to forward-slash form.
 local function normalize(path)
 	return path and path:gsub("\\", "/") or nil
 end
 
+-- Return whether one file path is readable.
 local function readable(path)
 	return path and vim.fn.filereadable(path) == 1
 end
 
+-- Return whether a path can be executed directly or at least exists as a file.
 local function executable(path)
 	return path and (vim.fn.executable(path) == 1 or readable(path))
 end
 
+-- Prefer PowerShell Core when available and fall back to Windows PowerShell otherwise.
 local function powershell()
 	return vim.fn.executable("pwsh") == 1 and "pwsh" or "powershell"
 end
 
+-- Quote one string for use inside a PowerShell command.
 local function ps_quote(text)
 	return "'" .. tostring(text):gsub("'", "''") .. "'"
 end
 
+-- Read one environment variable and return a printable placeholder when unset.
 local function env_value(name)
 	local value = vim.fn.getenv(name)
 	if value == nil or value == vim.NIL or value == "" then
@@ -109,6 +125,7 @@ local function env_value(name)
 	return tostring(value)
 end
 
+-- Build the environment summary shown when launching Unreal through the shared output panel.
 local function launch_environment_lines(root, shell_name)
 	return {
 		"LaunchCwd:   " .. tostring(root or ""),
@@ -120,6 +137,7 @@ local function launch_environment_lines(root, shell_name)
 	}
 end
 
+-- Write one structured launch/build event into the optional UCore logger.
 local function write_ucore_log(tag, fields)
 	local ok, logger = pcall(require, "ucore.log")
 	if ok and logger and type(logger.write) == "function" then
@@ -127,6 +145,7 @@ local function write_ucore_log(tag, fields)
 	end
 end
 
+-- Resolve the active project, .uproject, and engine context for build or launch actions.
 local function current_context()
 	local root = project.find_project_root_from_context()
 	if not root then
@@ -152,14 +171,17 @@ local function current_context()
 	}
 end
 
+-- Expose the resolved Unreal project context to other modules.
 function M.current_context()
 	return current_context()
 end
 
+-- Return the expected Build.bat path under one engine root.
 local function build_bat(engine_root)
 	return normalize(engine_root .. "/Engine/Build/BatchFiles/Build.bat")
 end
 
+-- Prefer a configuration-specific editor executable when one exists.
 local function configuration_editor_exe(engine_root, platform, configuration)
 	configuration = tostring(configuration or "")
 	if configuration == "" or configuration == "Development" then
@@ -181,6 +203,7 @@ local function configuration_editor_exe(engine_root, platform, configuration)
 	return nil
 end
 
+-- Resolve the best editor executable for the chosen engine, platform, and configuration.
 local function editor_exe(engine_root, platform, configuration)
 	if (config.values.editor or {}).prefer_configuration_executable ~= false then
 		local configured = configuration_editor_exe(engine_root, platform, configuration)
@@ -203,10 +226,12 @@ local function editor_exe(engine_root, platform, configuration)
 	return nil
 end
 
+-- Expose editor executable resolution to callers that need launch details.
 function M.editor_executable(engine_root, platform, configuration)
 	return editor_exe(engine_root, platform, configuration)
 end
 
+-- Normalize startup mode names to the supported editor/game set.
 local function normalize_startup_mode(mode)
 	mode = tostring(mode or ""):lower()
 	if mode == "game" then
@@ -215,6 +240,7 @@ local function normalize_startup_mode(mode)
 	return "editor"
 end
 
+-- Merge startup config defaults with the current project context.
 local function startup_defaults(ctx, mode_override)
 	local startup = config.values.startup or {}
 	local mode = normalize_startup_mode(mode_override or startup.mode)
@@ -234,6 +260,7 @@ local function startup_defaults(ctx, mode_override)
 	}
 end
 
+-- Build the resolved startup profile used by launch commands.
 function M.startup_profile(mode_override)
 	local ctx, err = current_context()
 	if not ctx then
@@ -244,6 +271,7 @@ function M.startup_profile(mode_override)
 	return vim.tbl_extend("force", ctx, defaults), nil
 end
 
+-- Build the runtime executable candidates for a packaged or local game target.
 local function game_exe_candidates(root, target, platform, configuration, project_name)
 	local base = normalize(root .. "/Binaries/" .. tostring(platform))
 	local items = {
@@ -259,6 +287,7 @@ local function game_exe_candidates(root, target, platform, configuration, projec
 	return items
 end
 
+-- Resolve the first existing game executable from the known candidate paths.
 function M.game_executable(root, opts)
 	opts = opts or {}
 	local target = opts.target or project.game_target_name(root)
@@ -275,6 +304,7 @@ function M.game_executable(root, opts)
 	return nil
 end
 
+-- Save modified project buffers before starting a build or launching the editor.
 local function save_modified_project_buffers(root)
 	root = normalize(root)
 	if not root or root == "" then
@@ -293,6 +323,7 @@ local function save_modified_project_buffers(root)
 	end
 end
 
+-- Build the exact PowerShell command line used to invoke Unreal's Build.bat.
 local function build_command(ctx, opts)
 	local bat = build_bat(ctx.engine_root)
 	if not readable(bat) then
@@ -306,6 +337,7 @@ local function build_command(ctx, opts)
 	local args = {}
 
 	if build.use_target_arguments ~= false then
+		-- Package one -Target argument in the format expected by Build.bat.
 		local function target_arg(name, target_platform, target_config, extra)
 			local spec = table.concat({
 				tostring(name),
@@ -355,6 +387,7 @@ local function build_command(ctx, opts)
 	return { powershell(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script }, nil
 end
 
+-- Parse optional build arguments and merge them with startup defaults.
 local function parse_build_args(args, ctx, mode_override)
 	args = vim.trim(args or "")
 	local tokens = {}
@@ -370,6 +403,7 @@ local function parse_build_args(args, ctx, mode_override)
 	}
 end
 
+-- Create a scratch buffer that displays build output when the shared panel is unavailable.
 local function create_log_buffer(title)
 	local previous_win = vim.api.nvim_get_current_win()
 	vim.cmd("botright 15new")
@@ -395,6 +429,7 @@ local function create_log_buffer(title)
 	return buf
 end
 
+-- Keep all visible build windows scrolled to the newest output line.
 local function scroll_to_bottom(buf)
 	for _, win in ipairs(vim.fn.win_findbuf(buf)) do
 		local line_count = vim.api.nvim_buf_line_count(buf)
@@ -402,6 +437,7 @@ local function scroll_to_bottom(buf)
 	end
 end
 
+-- Append output text to one log buffer and invoke per-line processing hooks.
 local function append_lines(buf, data, on_line)
 	if not data or data == "" then
 		return
@@ -434,6 +470,7 @@ local function append_lines(buf, data, on_line)
 	end)
 end
 
+-- Parse one compiler or linker output line into a quickfix-style diagnostic item.
 local function parse_diagnostic_line(line, project_root)
 	local path, lnum, col, kind, msg = line:match(
 		"^(.-)%((%d+)(?:,(%d+))?%)%s*:%s*(error|warning)%s+(.+)$"
@@ -476,6 +513,7 @@ local function parse_diagnostic_line(line, project_root)
 	return nil
 end
 
+-- Apply semantic highlighting to one build log line when color output is enabled.
 local function color_build_line(buf, line_num, text)
 	if not config.values.build.color_log then
 		return
@@ -493,6 +531,7 @@ local function color_build_line(buf, line_num, text)
 	end
 end
 
+-- Split one stdout or stderr chunk into normalized display lines.
 local function split_lines(data)
 	if not data or data == "" then
 		return {}
@@ -506,6 +545,7 @@ local function split_lines(data)
 	return lines
 end
 
+-- Create the active build output sink, preferring the shared output panel.
 local function build_output_sink(title)
 	local panel = shared_output_panel()
 	if panel then
@@ -527,6 +567,7 @@ local function build_output_sink(title)
 	}
 end
 
+-- Append a build output chunk and optionally parse diagnostics from each line.
 local function append_build_chunk(sink, project_root, data, no_parse)
 	if not data or data == "" then
 		return
@@ -566,6 +607,7 @@ local function append_build_chunk(sink, project_root, data, no_parse)
 	end)
 end
 
+-- Publish parsed build diagnostics into quickfix and UCore diagnostic views.
 local function fill_quickfix()
 	local items = {}
 	for _, item in ipairs(build_diagnostics) do
@@ -590,6 +632,7 @@ local function fill_quickfix()
 	end
 end
 
+-- Summarize build completion status, error count, warning count, and exit code.
 local function build_summary(ok, exit_code)
 	local parts = {}
 	table.insert(parts, ok and "Build succeeded" or "Build failed")
@@ -605,6 +648,7 @@ local function build_summary(ok, exit_code)
 	return table.concat(parts, ", ")
 end
 
+-- Process one build output line into diagnostics and syntax highlighting state.
 on_build_line = function(project_root, buf, line_num, text, no_parse)
 	if not no_parse then
 		local item = parse_diagnostic_line(text, project_root)
@@ -620,6 +664,7 @@ on_build_line = function(project_root, buf, line_num, text, no_parse)
 	color_build_line(buf, line_num, text)
 end
 
+-- Reset build-scoped diagnostics and cancellation flags before a new job starts.
 local function reset_diagnostics()
 	build_diagnostics = {}
 	build_error_count = 0
@@ -627,6 +672,7 @@ local function reset_diagnostics()
 	build_cancelled = false
 end
 
+-- Start one asynchronous Unreal build and stream output into the active sink.
 local function start_build(args, callback, mode_override)
 	callback = callback or function() end
 
@@ -695,6 +741,7 @@ local function start_build(args, callback, mode_override)
 	}, function(result)
 		build_job = nil
 		build_pid = nil
+		-- Keep sink-local state so the completion callback can finish even after globals are reset.
 		local this_buf = build_buf
 		local this_output = build_output
 		build_buf = nil
@@ -734,10 +781,12 @@ local function start_build(args, callback, mode_override)
 	build_pid = build_job and build_job.pid or nil
 end
 
+-- Return whether the current host platform is Windows.
 local function is_windows()
 	return package.config:sub(1, 1) == "\\"
 end
 
+-- Terminate the active build process tree on the current platform.
 local function kill_process_tree(pid)
 	if not pid then
 		return false
@@ -754,6 +803,7 @@ local function kill_process_tree(pid)
 	return false
 end
 
+-- Launch one resolved Unreal profile and mirror the launch context into the shared output panel.
 local function launch_profile(profile)
 	local program = profile.program
 	if not program then
@@ -835,18 +885,22 @@ local function launch_profile(profile)
 	vim.notify("Opening " .. tostring(profile.display_name or "Unreal") .. ": " .. tostring(profile.project_name or ""), vim.log.levels.INFO)
 end
 
+-- Start a build using the default startup/build profile.
 function M.build(args)
 	start_build(args)
 end
 
+-- Start a build and forward completion status to the supplied callback.
 function M.build_async(args, callback)
 	start_build(args, callback)
 end
 
+-- Return whether a build job is currently active.
 function M.is_build_running()
 	return build_job ~= nil
 end
 
+-- Stop the active build job and close out any remaining UI state.
 function M.cancel_build()
 	if not build_job then
 		return vim.notify("No UBuildTool build is running", vim.log.levels.INFO)
@@ -877,6 +931,7 @@ function M.cancel_build()
 	end
 end
 
+-- Resolve the executable and arguments needed to launch editor or game mode.
 local function resolve_launch_profile(mode_override)
 	local profile, err = M.startup_profile(mode_override)
 	if not profile then
@@ -915,6 +970,7 @@ local function resolve_launch_profile(mode_override)
 	return profile, nil
 end
 
+-- Build first when configured, then launch the resolved editor or game profile.
 function M.open_mode(mode_override, args)
 	local profile, err = resolve_launch_profile(mode_override)
 	if not profile then
@@ -939,14 +995,17 @@ function M.open_mode(mode_override, args)
 	end, mode_override)
 end
 
+-- Build and open Unreal Editor mode.
 function M.open_editor(args)
 	return M.open_mode("editor", args)
 end
 
+-- Build and open Unreal Game mode.
 function M.open_game(args)
 	return M.open_mode("game", args)
 end
 
+-- Build and open whichever startup mode is configured by default.
 function M.open_startup(args)
 	return M.open_mode(nil, args)
 end

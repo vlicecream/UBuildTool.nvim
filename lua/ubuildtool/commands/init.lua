@@ -1,16 +1,25 @@
+-- Author: Ame林汀
+-- Website: vlicecream.github.io
+-- File: lua/ubuildtool/commands/init.lua
+-- Purpose: Parse :UBuildTool subcommands and register command-line completion.
+-- License: MIT
+
 local actions = require("ubuildtool.commands.actions")
 
 local M = {}
 
+-- Extract the normalized subcommand name from one user-command argument object.
 local function normalize_subcommand(args)
 	local sub = (args.args or ""):match("^%s*(%S+)")
 	return sub and sub:lower() or "help"
 end
 
+-- Return the remaining raw argument tail after the subcommand token.
 local function command_tail(args)
 	return (args.args or ""):match("^%s*%S+%s*(.-)%s*$") or ""
 end
 
+-- Dispatch :UBuildTool to the matching action handler.
 function M.dispatch(args)
 	local sub = normalize_subcommand(args)
 	local tail = command_tail(args)
@@ -44,6 +53,7 @@ function M.dispatch(args)
 	handler()
 end
 
+-- Register the :UBuildTool user command and its subcommand completion list.
 function M.register()
 	pcall(vim.api.nvim_del_user_command, "UBuildTool")
 
