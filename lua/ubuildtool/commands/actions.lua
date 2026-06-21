@@ -16,7 +16,7 @@ end
 
 -- Stop the currently running Unreal build, if any.
 -- 停止当前正在运行的虚幻构建（如果有）。
-function M.build_cancel()
+function M.build_stop()
 	unreal.cancel_build()
 end
 

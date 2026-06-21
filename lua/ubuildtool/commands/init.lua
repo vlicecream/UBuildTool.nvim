@@ -32,10 +32,10 @@ function M.dispatch(args)
 		build = function()
 			actions.build(tail)
 		end,
-		["build-stop"] = actions.build_cancel,
-		["build-cancel"] = actions.build_cancel,
-		buildstop = actions.build_cancel,
-		buildcancel = actions.build_cancel,
+		["build-stop"] = actions.build_stop,
+		["build-cancel"] = actions.build_stop,
+		buildstop = actions.build_stop,
+		buildcancel = actions.build_stop,
 		launch = function()
 			actions.launch(tail)
 		end,
